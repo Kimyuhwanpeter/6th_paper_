@@ -7,6 +7,7 @@ from Cal_measurement import *
 import matplotlib.pyplot as plt
 import numpy as np
 import easydict
+import os
 
 FLAGS = easydict.EasyDict({"img_size": 512,
 
@@ -330,6 +331,20 @@ def main():
                                                                                                                         recall_ / len(train_img_dataset),
                                                                                                                         precision_ / len(train_img_dataset)))
 
+            output_text.write("Epoch: ")
+            output_text.write(str(epoch))
+            output_text.write("===================================================================")
+            output_text.write("\n")
+            output_text.write("train IoU: ")
+            output_text.write("%.4f" % (iou / len(train_img_dataset)))
+            output_text.write(", train F1_score: ")
+            output_text.write("%.4f" % (f1_score_))
+            output_text.write(", train sensitivity: ")
+            output_text.write("%.4f" % (recall_ / len(train_img_dataset)))
+            output_text.write(", train precision: ")
+            output_text.write("%.4f" % (precision_ / len(train_img_dataset)))
+            output_text.write("\n")
+
             test_iter = iter(test_ge)
             iou = 0.
             cm = 0.
@@ -365,15 +380,35 @@ def main():
                 recall_ = recall_ / len(test_img_dataset)
                 f1_score_ = (2*precision_*recall_) / (precision_ + recall_)
 
-                name = test_img_dataset[i].split("/")[-1].split(".")[0]
-                plt.imsave(FLAGS.test_images + "/" + name + "_label.png", label_mask_color)
-                plt.imsave(FLAGS.test_images + "/" + name + "_predict.png", pred_mask_color)
+                #name = test_img_dataset[i].split("/")[-1].split(".")[0]
+                #plt.imsave(FLAGS.test_images + "/" + name + "_label.png", label_mask_color)
+                #plt.imsave(FLAGS.test_images + "/" + name + "_predict.png", pred_mask_color)
 
 
             print("test mIoU = %.4f, test F1_score = %.4f, test sensitivity(recall) = %.4f, test precision = %.4f" % (iou / len(test_img_dataset),
                                                                                                                     f1_score_,
                                                                                                                     recall_ / len(test_img_dataset),
                                                                                                                     precision_ / len(test_img_dataset)))
+            output_text.write("test IoU: ")
+            output_text.write("%.4f" % (iou / len(test_img_dataset)))
+            output_text.write(", test F1_score: ")
+            output_text.write("%.4f" % (f1_score_))
+            output_text.write(", test sensitivity: ")
+            output_text.write("%.4f" % (recall_ / len(test_img_dataset)))
+            output_text.write(", test precision: ")
+            output_text.write("%.4f" % (precision_ / len(test_img_dataset)))
+            output_text.write("\n")
+            output_text.write("===================================================================")
+            output_text.write("\n")
+            output_text.flush()
+
+            model_dir = "%s/%s" % (FLAGS.save_checkpoint, epoch)
+            if not os.path.isdir(model_dir):
+                print("Make {} folder to store the weight!".format(epoch))
+                os.makedirs(model_dir)
+            ckpt = tf.train.Checkpoint(model=model, model2=model2, optim=optim, optim2=optim2)
+            ckpt_dir = model_dir + "/Crop_weed_model_{}.ckpt".format(epoch)
+            ckpt.save(ckpt_dir)
 
 if __name__ == "__main__":
     main()
