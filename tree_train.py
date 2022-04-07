@@ -11,13 +11,13 @@ import os
 
 FLAGS = easydict.EasyDict({"img_size": 512,
 
-                           "train_txt_path": "D:/[1]DB/[5]4th_paper_DB/Fruit/apple_pear/train.txt",
+                           "train_txt_path": "/content/train.txt",
 
-                           "test_txt_path": "D:/[1]DB/[5]4th_paper_DB/Fruit/apple_pear/test.txt",
+                           "test_txt_path": "/content/test.txt",
                            
-                           "label_path": "D:/[1]DB/[5]4th_paper_DB/Fruit/apple_pear/FlowerLabels_temp/",
+                           "label_path": "/content/FlowerLabels_temp/",
                            
-                           "image_path": "D:/[1]DB/[5]4th_paper_DB/Fruit/apple_pear/FlowerImages/",
+                           "image_path": "/content/FlowerImages/",
                            
                            "pre_checkpoint": False,
                            
@@ -27,19 +27,19 @@ FLAGS = easydict.EasyDict({"img_size": 512,
 
                            "min_lr": 1e-7,
                            
-                           "epochs": 200,
+                           "epochs": 400,
 
                            "total_classes": 3,
 
                            "ignore_label": 0,
 
-                           "batch_size": 2,
+                           "batch_size": 4,
 
-                           "sample_images": "C:/Users/Yuhwan/Downloads/tt",
+                           "sample_images": "/content/drive/MyDrive/6th_paper/sample_images",
 
-                           "save_checkpoint": "/yuwhan/Edisk/yuwhan/Edisk/Segmentation/V2/BoniRob/checkpoint",
+                           "save_checkpoint": "/content/drive/MyDrive/6th_paper/checkpoint",
 
-                           "save_print": "C:/Users/Yuhwan/Downloads/_.txt",
+                           "save_print": "/content/drive/MyDrive/6th_paper/train_out.txt",
 
                            "train_loss_graphs": "/yuwhan/Edisk/yuwhan/Edisk/Segmentation/V2/BoniRob/train_loss.txt",
 
@@ -53,7 +53,7 @@ FLAGS = easydict.EasyDict({"img_size": 512,
 
                            "train": True})
 
-optim = tf.keras.optimizers.Adam(FLAGS.lr, beta_1=0.5)
+optim = tf.keras.optimizers.Adam(FLAGS.lr)
 color_map = np.array([[0, 0, 0],[255,0,0]], np.uint8)
 def tr_func(image_list, label_list):
 
@@ -406,8 +406,8 @@ def main():
             if not os.path.isdir(model_dir):
                 print("Make {} folder to store the weight!".format(epoch))
                 os.makedirs(model_dir)
-            ckpt = tf.train.Checkpoint(model=model, model2=model2, optim=optim, optim2=optim2)
-            ckpt_dir = model_dir + "/Crop_weed_model_{}.ckpt".format(epoch)
+            ckpt = tf.train.Checkpoint(model=model, optim=optim)
+            ckpt_dir = model_dir + "/apple_{}.ckpt".format(epoch)
             ckpt.save(ckpt_dir)
 
 if __name__ == "__main__":
