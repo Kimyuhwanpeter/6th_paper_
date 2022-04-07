@@ -8,8 +8,7 @@ def proposed_block(original_input, encoder_input, decoder_input, filters):
     h = tf.keras.layers.ReLU()(h)
 
     original_input = tf.image.resize(original_input, [h.shape[1], h.shape[2]])
-    original_input_ = tf.image.rgb_to_hsv(original_input)
-    h = tf.nn.sigmoid(original_input_) * h
+    h = original_input * tf.nn.sigmoid(h)
 
     h = tf.keras.layers.Conv2D(filters=filters, kernel_size=1)(h)
     h = tf.keras.layers.BatchNormalization()(h)
