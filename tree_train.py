@@ -11,13 +11,13 @@ import os
 
 FLAGS = easydict.EasyDict({"img_size": 512,
 
-                           "train_txt_path": "/content/train.txt",
+                           "train_txt_path": "D:/[1]DB/[5]4th_paper_DB/Fruit/apple_pear/train.txt",
 
-                           "test_txt_path": "/content/test.txt",
+                           "test_txt_path": "D:/[1]DB/[5]4th_paper_DB/Fruit/apple_pear/test.txt",
                            
-                           "label_path": "/content/FlowerLabels_temp/",
+                           "label_path": "D:/[1]DB/[5]4th_paper_DB/Fruit/apple_pear/FlowerLabels_temp/",
                            
-                           "image_path": "/content/FlowerImages/",
+                           "image_path": "D:/[1]DB/[5]4th_paper_DB/Fruit/apple_pear/FlowerImages/",
                            
                            "pre_checkpoint": False,
                            
@@ -27,19 +27,19 @@ FLAGS = easydict.EasyDict({"img_size": 512,
 
                            "min_lr": 1e-7,
                            
-                           "epochs": 400,
+                           "epochs": 200,
 
                            "total_classes": 3,
 
                            "ignore_label": 0,
 
-                           "batch_size": 4,
+                           "batch_size": 2,
 
-                           "sample_images": "/content/drive/MyDrive/6th_paper/sample_images",
+                           "sample_images": "C:/Users/Yuhwan/Downloads/tt",
 
-                           "save_checkpoint": "/content/drive/MyDrive/6th_paper/checkpoint",
+                           "save_checkpoint": "/yuwhan/Edisk/yuwhan/Edisk/Segmentation/V2/BoniRob/checkpoint",
 
-                           "save_print": "/content/drive/MyDrive/6th_paper/train_out.txt",
+                           "save_print": "C:/Users/Yuhwan/Downloads/_.txt",
 
                            "train_loss_graphs": "/yuwhan/Edisk/yuwhan/Edisk/Segmentation/V2/BoniRob/train_loss.txt",
 
@@ -53,7 +53,8 @@ FLAGS = easydict.EasyDict({"img_size": 512,
 
                            "train": True})
 
-optim = tf.keras.optimizers.Adam(FLAGS.lr)
+optim = tf.keras.optimizers.Adam(FLAGS.lr, beta_1=0.5)
+optim2 = tf.keras.optimizers.Adam(FLAGS.lr, beta_1=0.5)
 color_map = np.array([[0, 0, 0],[255,0,0]], np.uint8)
 def tr_func(image_list, label_list):
 
@@ -112,6 +113,14 @@ def true_dice_loss(y_true, y_pred):
 
     return 1 - tf.math.divide(numerator, denominator)
 
+def false_dice_loss(y_true, y_pred):
+    y_true = 1 - tf.cast(y_true, tf.float32)
+    y_pred = 1 - tf.math.sigmoid(y_pred)
+    numerator = 2 * tf.reduce_sum(y_true * y_pred)
+    denominator = tf.reduce_sum(y_true + y_pred)
+
+    return 1 - tf.math.divide(numerator, denominator)
+
 def binary_focal_loss(gamma=2., alpha=.25):
     """
     Binary form of focal loss.
@@ -143,70 +152,81 @@ def binary_focal_loss(gamma=2., alpha=.25):
 
     return binary_focal_loss_fixed
 
+def two_region_dice_loss(y_true, y_pred):
+    y_true = tf.cast(y_true, tf.float32)
+    y_pred = tf.math.sigmoid(y_pred)
+    numerator = 2*(tf.reduce_sum(y_true*y_pred) + tf.reduce_sum((1 - y_true)*(1 - y_pred)))
+    denominator = tf.reduce_sum(y_true + y_pred) + tf.reduce_sum(2 - y_true - y_pred)
+
+    return 1 - tf.math.divide(numerator, denominator)
+
 #@tf.function
 def run_model(model, images, training=True):
     return model(images, training=training)
 
 
-def cal_loss(model, images, labels, object_buf, count, attention):
+def cal_loss(model, model2, images, labels, object_buf):
+    
+    with tf.GradientTape() as tape: # consider object and non-object
+        batch_labels = tf.reshape(labels, [-1,])
+        raw_logits = run_model(model, images, True)
+        logits = tf.reshape(raw_logits, [-1, ])
 
-    if count == 0:
-        with tf.GradientTape() as tape:
-            att = np.ones([FLAGS.batch_size, FLAGS.img_size, FLAGS.img_size, 1])
-            batch_labels = tf.reshape(labels, [-1,])
-            raw_logits = run_model(model, images * att, True)
-            logits = tf.reshape(raw_logits, [-1, ])
-            only_back_output = tf.where(batch_labels == 0, 1 - tf.nn.sigmoid(logits), logits)
-            only_back_indices = tf.squeeze(tf.where(batch_labels == 0), -1)
-            only_back_logits = tf.gather(only_back_output, only_back_indices)
-            only_back_loss = tf.reduce_mean(-tf.math.log(only_back_logits + tf.keras.backend.epsilon()))
+        dice_loss = true_dice_loss(batch_labels, logits)
 
-            only_object_output = tf.where(batch_labels == 1, tf.nn.sigmoid(logits), logits)
-            only_object_indices = tf.squeeze(tf.where(batch_labels == 1), -1)
-            only_object_logits = tf.gather(only_object_output, only_object_indices)
-            only_object_loss = tf.reduce_mean(-tf.math.log(only_object_logits + tf.keras.backend.epsilon()))
-            # only_object_loss has a problem, nan!!!!
+    grads = tape.gradient(dice_loss, model.trainable_variables)
+    optim2.apply_gradients(zip(grads, model.trainable_variables))
 
-            dice_loss = true_dice_loss(batch_labels, logits)
+    with tf.GradientTape() as tape2: # consider only object
 
-            distri_loss1 = binary_focal_loss(alpha=object_buf[1])(batch_labels, tf.nn.sigmoid(logits))
+        batch_labels = tf.reshape(labels, [-1,])
+        raw_logits = run_model(model2, images * tf.nn.sigmoid(raw_logits), True)
+        logits = tf.reshape(raw_logits, [-1, ])
+        only_back_output = tf.where(batch_labels == 0, 1 - tf.nn.sigmoid(logits), logits)
+        only_back_indices = tf.squeeze(tf.where(batch_labels == 0), -1)
+        only_back_logits = tf.gather(only_back_output, only_back_indices)
+        only_back_loss = tf.reduce_mean(-tf.math.log(only_back_logits + tf.keras.backend.epsilon()))
 
-            total_loss = only_back_loss + only_object_loss + dice_loss + distri_loss1
+        only_object_output = tf.where(batch_labels == 1, tf.nn.sigmoid(logits), logits)
+        only_object_indices = tf.squeeze(tf.where(batch_labels == 1), -1)
+        only_object_logits = tf.gather(only_object_output, only_object_indices)
+        only_object_loss = tf.reduce_mean(-tf.math.log(only_object_logits + tf.keras.backend.epsilon()))
 
-    else:
-        with tf.GradientTape() as tape:
+        only_object_labels = tf.gather(batch_labels, only_object_indices)
+        non_object_labels = tf.gather(batch_labels, only_back_indices)
 
-            batch_labels = tf.reshape(labels, [-1,])
-            raw_logits = run_model(model, images * attention, True)
-            logits = tf.reshape(raw_logits, [-1, ])
-            only_back_output = tf.where(batch_labels == 0, 1 - tf.nn.sigmoid(logits), logits)
-            only_back_indices = tf.squeeze(tf.where(batch_labels == 0), -1)
-            only_back_logits = tf.gather(only_back_output, only_back_indices)
-            only_back_loss = tf.reduce_mean(-tf.math.log(only_back_logits + tf.keras.backend.epsilon()))
+        if object_buf[0] < object_buf[1]:
+            distri_loss1 = binary_focal_loss(alpha=object_buf[1])(batch_labels, tf.nn.sigmoid(logits)) \
+                + tf.keras.losses.BinaryCrossentropy(from_logits=True)(only_object_labels,
+                                                                       only_object_logits)
+            dice_loss = object_buf[1] * true_dice_loss(only_object_labels, 
+                                                       only_object_logits) \
+                + object_buf[0] * false_dice_loss(non_object_labels,
+                                                  only_back_logits)
+        else:
+            distri_loss1 = binary_focal_loss(alpha=object_buf[0])(batch_labels, tf.nn.sigmoid(logits)) \
+                + tf.keras.losses.BinaryCrossentropy(from_logits=True)(non_object_labels,
+                                                                       only_back_logits)
+            dice_loss = object_buf[0] * true_dice_loss(only_object_labels, 
+                                                       only_object_logits) \
+                + object_buf[1] * false_dice_loss(non_object_labels,
+                                                  only_back_logits)
 
-            only_object_output = tf.where(batch_labels == 1, tf.nn.sigmoid(logits), logits)
-            only_object_indices = tf.squeeze(tf.where(batch_labels == 1), -1)
-            only_object_logits = tf.gather(only_object_output, only_object_indices)
-            only_object_loss = tf.reduce_mean(-tf.math.log(only_object_logits + tf.keras.backend.epsilon()))
+        total_loss = only_back_loss + only_object_loss + dice_loss + distri_loss1
 
-            dice_loss = true_dice_loss(batch_labels, logits)
+    grads2 = tape2.gradient(total_loss, model2.trainable_variables)
+    optim.apply_gradients(zip(grads2, model2.trainable_variables))
 
-            distri_loss1 = binary_focal_loss(alpha=object_buf[1])(batch_labels, tf.nn.sigmoid(logits))
-
-            total_loss = only_back_loss + only_object_loss + dice_loss + distri_loss1
-
-    grads = tape.gradient(total_loss, model.trainable_variables)
-    optim.apply_gradients(zip(grads, model.trainable_variables))
-
-    return total_loss, tf.nn.sigmoid(raw_logits)
+    return total_loss
 
 def main():
 
     model = modified_network(input_shape=(FLAGS.img_size, FLAGS.img_size, 3), nclasses=1)
+    model2 = modified_network(input_shape=(FLAGS.img_size, FLAGS.img_size, 3), nclasses=1)
     model.summary()
 
     if FLAGS.pre_checkpoint:
-        ckpt = tf.train.Checkpoint(model=model, optim=optim)
+        ckpt = tf.train.Checkpoint(model=model, model2=model2, optim=optim, optim2=optim2)
         ckpt_manger = tf.train.CheckpointManager(ckpt, FLAGS.pre_checkpoint_path, 5)
 
         if ckpt_manger.latest_checkpoint:
@@ -265,13 +285,7 @@ def main():
                 object_buf = (np.max(object_buf / np.sum(object_buf)) + 1 - (object_buf / np.sum(object_buf)))
                 object_buf = tf.nn.softmax(object_buf).numpy()
 
-                for j in range(2):
-                    if j == 0:
-                        att = np.ones([FLAGS.batch_size, FLAGS.img_size, FLAGS.img_size, 1])
-                        loss, attention_output = cal_loss(model, batch_images, batch_labels, object_buf, j, att)
-
-                    else:
-                        loss, attention_output = cal_loss(model, batch_images, batch_labels, object_buf, j, attention_output)
+                loss = cal_loss(model, model2, batch_images, batch_labels, object_buf)
 
                 if count % 10 == 0:
                     print("Epochs: {}, Loss = {} [{}/{}]".format(epoch, loss, step + 1, tr_idx))
@@ -279,7 +293,9 @@ def main():
 
                 if count % 100 == 0:
 
-                    raw_logits = run_model(model, batch_images, False)
+                    object = run_model(model, batch_images, False)
+                    object = tf.nn.sigmoid(object)
+                    raw_logits = run_model(model2, batch_images * object, False)
                     object_output = tf.nn.sigmoid(raw_logits)
                     for i in range(FLAGS.batch_size):
                         label = tf.cast(batch_labels[i, :, :, 0], tf.int32).numpy()
@@ -305,7 +321,9 @@ def main():
                 batch_images, _, batch_labels = next(tr_iter)
                 for j in range(FLAGS.batch_size):
                     batch_image = tf.expand_dims(batch_images[j], 0)
-                    raw_logits = run_model(model, batch_image, False)
+                    object = run_model(model, batch_image, False)
+                    object = tf.nn.sigmoid(object)
+                    raw_logits = run_model(model2, batch_image * object, False)
                     object_output = tf.nn.sigmoid(raw_logits[0, :, :, 0])
                     object_output = tf.where(object_output >= 0.5, 1, 0).numpy()
 
@@ -355,7 +373,9 @@ def main():
                 batch_images, batch_labels = next(test_iter)
                 for j in range(1):
                     batch_image = tf.expand_dims(batch_images[j], 0)
-                    raw_logits = run_model(model, batch_image, False)
+                    object = run_model(model, batch_image, False)
+                    object = tf.nn.sigmoid(object)
+                    raw_logits = run_model(model2, batch_image * object, False)
                     object_output = tf.nn.sigmoid(raw_logits[0, :, :, 0])
                     object_output = tf.where(object_output >= 0.5, 1, 0).numpy()
 
@@ -402,13 +422,13 @@ def main():
             output_text.write("\n")
             output_text.flush()
 
-            model_dir = "%s/%s" % (FLAGS.save_checkpoint, epoch)
-            if not os.path.isdir(model_dir):
-                print("Make {} folder to store the weight!".format(epoch))
-                os.makedirs(model_dir)
-            ckpt = tf.train.Checkpoint(model=model, optim=optim)
-            ckpt_dir = model_dir + "/apple_{}.ckpt".format(epoch)
-            ckpt.save(ckpt_dir)
+            #model_dir = "%s/%s" % (FLAGS.save_checkpoint, epoch)
+            #if not os.path.isdir(model_dir):
+            #    print("Make {} folder to store the weight!".format(epoch))
+            #    os.makedirs(model_dir)
+            #ckpt = tf.train.Checkpoint(model=model, model2=model2, optim=optim, optim2=optim2)
+            #ckpt_dir = model_dir + "/apple_model_{}.ckpt".format(epoch)
+            #ckpt.save(ckpt_dir)
 
 if __name__ == "__main__":
     main()
